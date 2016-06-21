@@ -45,6 +45,8 @@ ORDER BY L.lat, L.long
 $i = 1;
 $data = $q->fetch(PDO::FETCH_ASSOC);
 while (($data) !== FALSE) {
+	set_time_limit(30);
+
 	$people = [];
 	$lastNames = [];
 	$lids = [];
@@ -74,16 +76,18 @@ while (($data) !== FALSE) {
 	?>,{
 	"id" : "shape<?php echo $i++; ?>",
 	"name" : "<?php echo (count($people) > 1 ? implode(", ", $lastNames) : $people[0]) . " (Loc " . implode(", ", $lids) . ")"; ?>",
-	"description" : "<?php
+	"description" : "<div ><?php
 	foreach ($people as $p) {
 		/** @var $p Person */
 		if (count($people) > 1)
 			echo "<h3>" . $p . "</h3>";
-		echo "<table>";
-		foreach ($p->getOppsTaken() as $o) {
-			/** @var $o Opp */
+		echo "Events:";
+		echo "<table style=\\\"font-size: 10px;\\\" >";
+		foreach ($p->getCalcdOpps() as $o) {
+			/** @var $o CalcOpp */
 			echo "<tr>";
 			echo "<td>";
+//			echo
 			echo $o->confidence;
 			echo "%</td>";
 			echo "<td>";
@@ -93,8 +97,26 @@ while (($data) !== FALSE) {
 			$opps++;
 		}
 		echo "</table>";
+		$gms = $p->getGroupMemberships();
+		if (count($gms) > 0) {
+			echo "Groups:";
+			echo "<table style=\\\"font-size: 10px;\\\" >";
+			foreach ($gms as $gm) {
+				/** @var $gm GrpMem */
+				echo "<tr>";
+				echo "<td>";
+				echo str_replace('"', "&quot;", $gm->getGroup()->name);
+				echo " (since " . date('j M Y', $gm->dJoin) . ")";
+				echo "</td>";
+				echo "</tr>";
+				$opps++;
+			}
+			echo "</table>";
+		} else {
+			echo "No Groups.";
+		}
 	}
-	?>",
+	?></div>",
 	"position" : {
 		"cartographicDegrees" : [<?php echo $long; ?>, <?php echo $lat; ?>, 0]
 	},

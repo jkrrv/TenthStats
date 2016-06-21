@@ -13,8 +13,6 @@ require.config({
 
 requirejs(["cesium/Cesium"], function(Cesium) {
 
-    var h= 0;
-
 //Create a Viewer instances and add the DataSource.
     viewer = new Cesium.Viewer('cesiumContainer', {
         animation : false,

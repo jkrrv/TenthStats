@@ -18,7 +18,15 @@ if (($handle = fopen("K:/SkyDrive/Tenth/Data/TCF/SpecialEvents.csv", "r")) !== F
 
 	while (($data = fgetcsv($handle, 1000, ",")) !== FALSE) {
 
-		$person = new Person($data[0] . "," . $data[1]);
+		set_time_limit(5);
+
+		try {
+			$person = new Person($data[0] . "," . $data[1]);
+		} catch (Exception $e) {
+			echo $e->getMessage() . "<br />";
+			continue;
+		}
+
 
 		if ($person->id == 0) {
 			echo "! Skipping " . $data[0] . " " . $data[1] . "<br />";

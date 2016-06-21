@@ -158,3 +158,7 @@ while ($r = $q->fetch(PDO::FETCH_ASSOC)) {
 }
 
 echo "Done Importing People";
+
+if ($_GET['continue']) {
+	echo "<script>window.location = \"import_03_smallGroups.php?continue=1\";</script>";
+}

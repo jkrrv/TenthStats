@@ -4,7 +4,7 @@ include '_db.php';
 
 global $pdo;
 
-// make sure larger groups exist.
+// Whole-Church Groups
 $g = new Grp("Communion AM");
 $g->name = "Communion AM";
 $g->type = "Commu";
@@ -21,8 +21,10 @@ $g->type = "Prayer";
 $g->commit();
 
 
-$g = new Grp("Tenth Saturday Night");
-$g->name = "Tenth Saturday Night";
+
+// TCN Stuff
+$g = new Grp("Equip");
+$g->name = "Equip";
 $g->type = "Large";
 $g->commit();
 
@@ -31,9 +33,27 @@ $g->name = "TCN Social";
 $g->type = "Large";
 $g->commit();
 
+$g = new Grp("Tenth Saturday Night");
+$g->name = "Tenth Saturday Night";
+$g->type = "Large";
+$g->commit();
+
+
+
+// TCF Stuff
 $g = new Grp("TCF Sunday");
 $g->name = "TCF Sunday";
 $g->type = "Sunday";
+$g->commit();
+
+$g = new Grp("TCF Social");
+$g->name = "TCF Social";
+$g->type = "Large";
+$g->commit();
+
+$g = new Grp("TCF Grace & Work");
+$g->name = "TCF Grace & Work";
+$g->type = "Large";
 $g->commit();
 
 
@@ -68,7 +88,7 @@ echo "<p>Done importing Small Group names.</p>";
 $s = $pdo->prepare("SELECT GroupName as gn, FamilyNumber as fn, Position as po, IndividualNumber as inn, DateAdded as da, DateRemoved as dr FROM SGRoster WHERE SGRoster.GroupActive = 'True' AND SGRoster.CloseDate = '';");
 $s->execute();
 
-while ($r = $s->fetch(PDO::FETCH_ASSOC)) {
+while (($r = $s->fetch(PDO::FETCH_ASSOC)) !== false) {
 
 	set_time_limit(2);
 
@@ -110,3 +130,7 @@ while ($r = $s->fetch(PDO::FETCH_ASSOC)) {
 }
 
 echo "<p>Done importing Small Group members.</p>";
+
+if (isset($_GET['continue'])) {
+	echo "<script>window.location = \"import_11_facebookTCF.php?continue=1\";</script>";
+}

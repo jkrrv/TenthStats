@@ -73,5 +73,9 @@ $row = 1;
 		fclose($handle);
 	}
 
+	if ($_GET['continue']) {
+		echo "<script>window.location = \"import_02_dbPeople.php?continue=1\";</script>";
+	}
+
 }
 

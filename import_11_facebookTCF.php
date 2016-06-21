@@ -1,6 +1,7 @@
 <?php
 
 require_once 'libs/facebook-php/facebook-php-sdk-v4/src/Facebook/autoload.php';
+require_once '_db.php';
 
 session_start();
 
@@ -38,7 +39,7 @@ if (isset($accessToken)) {
 
 $helper = $fb->getRedirectLoginHelper();
 $permissions = ['user_friends', 'rsvp_event', 'pages_show_list']; // optional
-$loginUrl = $helper->getLoginUrl('http://sexy.drexelforchrist.org:8000/TenthStats/import_facebookTCF.php', $permissions);
+$loginUrl = $helper->getLoginUrl('http://sexy.drexelforchrist.org:8000/TenthStats/import_11_facebookTCF.php', $permissions);
 
 echo '<a href="' . $loginUrl . '">Log in with Facebook!</a>';
 
@@ -51,11 +52,17 @@ if($accessToken != null) {
 
 
 	$response = $fb->get(
-		'/tenthcollegefellowship/events?fields=id%2Cname%2Cstart_time%2Cattending.limit(500)%7Bid%2Cfirst_name%2Clast_name%2Cmiddle_name%7D%2Cmaybe.limit(500)%7Bid%2Cfirst_name%2Clast_name%2Cmiddle_name%7D%2Cnoreply.limit(500)%7Bid%2Cfirst_name%2Clast_name%2Cmiddle_name%2Crsvp_status%7D&limit=20'
+		'/tenthcollegefellowship/events?fields=id%2Cname%2Cstart_time%2Cattending.limit(500)%7Bid%2Cfirst_name%2Clast_name%2Cmiddle_name%7D%2Cmaybe.limit(500)%7Bid%2Cfirst_name%2Clast_name%2Cmiddle_name%7D%2Cnoreply.limit(500)%7Bid%2Cfirst_name%2Clast_name%2Cmiddle_name%2Crsvp_status%7D&limit=10'
 	);
 
-	require_once '_facebookBody.php';
+	$default_g = new Grp("TCF Social");
 
-	/* handle the result */
+	$response = $response->getGraphEdge();
+
+	do {
+
+		include '_facebookBody.php';
+
+	} while ($response = $fb->next($response));
 
 }

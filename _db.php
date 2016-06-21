@@ -206,6 +206,10 @@ class GrpMem extends Base {
 
 		}
 	}
+
+	public function getGroup() {
+		return new Grp($this->grp);
+	}
 }
 
 
@@ -250,6 +254,69 @@ class Event extends Base {
 
 	public function __toString() {
 		return "" . $this->name;
+	}
+}
+
+class CalcOpp extends Opp {
+	public function __construct($person, $event) {
+		global $pdo;
+
+		$this->person = $person;
+		$this->event = $event;
+
+		$s = $pdo->prepare("SELECT status FROM _opportunities WHERE person = :person AND event = :event AND confidence == 100 ");
+		$s->execute([
+			':person' => $person,
+			':event' => $event
+		]);
+		if ((!!$status = $s->fetchColumn(0))) {
+			$this->status = $status;
+			$this->confidence = 100;
+			return;
+		}
+		$numerator = 0;
+		$denominator = 0;
+		$s = $pdo->prepare("SELECT source AS src, status AS sta FROM _opportunities WHERE person = :person AND event = :event");
+		$s->execute([
+			':person' => $person,
+			':event' => $event
+		]);
+		while(!!($r = $s->fetch(PDO::FETCH_ASSOC))) {
+			$likely = Opp::getAttLikelihoodByPersonAndSourceAndClaim($person, $r['src'], $r['sta']);
+			if ($likely !== false) {
+				$numerator += (int)$likely;
+				$denominator += 1;
+			}
+		}
+		if ($denominator == 0) {
+			$s = $pdo->prepare("SELECT source AS src, status AS sta FROM _opportunities WHERE person = :person AND event = :event");
+			$s->execute([
+				':person' => $person,
+				':event' => $event
+			]);
+			while(!!($r = $s->fetch(PDO::FETCH_ASSOC))) {
+				$likely = Opp::getAttLikelihoodBySourceAndClaim($r['src'], $r['sta']);
+				if ($likely !== false) {
+					$numerator += (int)$likely;
+					$denominator += 1;
+				}
+			}
+		}
+		if ($denominator == 0) {
+			$this->status = 0;
+			$this->confidence = 50;
+		} else {
+			$likely = $numerator / $denominator;
+			$this->status = ($likely < 50 ? -1 : 1);
+			$this->confidence = max($likely, 100 - $likely);
+		}
+
+
+		return;
+	}
+
+	public function commit() {
+		throw new Exception("Can't Commit a CalcOpp object.");
 	}
 }
 
@@ -312,6 +379,105 @@ class Opp extends Base {
 	public function getEvent() {
 		return new Event($this->event);
 	}
+	
+	public static function getAttLikelihoodByPersonAndSourceAndClaim($person, $src, $claim) {
+		global $pdo;
+		$s = $pdo->prepare("
+			SELECT
+			  sum(authority.status == 1) * 100 / count(authority.id) AS pctAttend
+			
+			FROM _opportunities AS authority
+			  JOIN _opportunities AS lower ON authority.confidence = 100
+					AND lower.confidence < 100
+					AND authority.person = lower.person
+					AND authority.event = lower.event
+					AND lower.confidence > 0
+			WHERE authority.person = :person
+					AND lower.source = :source
+					AND lower.status = :claim
+			GROUP BY lower.source;
+		");
+		$s->execute([':person' => $person,
+					 ':source' => $src,
+					 ':claim' => $claim]);
+
+		return $s->fetchColumn(0);
+	}
+
+	public static function getAttVarianceByPersonAndSourceAndClaim($person, $src, $claim) {
+		global $pdo;
+		$mu = self::getAttLikelihoodByPersonAndSourceAndClaim($person, $src, $claim) * 100;
+		$s = $pdo->prepare("
+			SELECT
+			  sum((((authority.status == 1) * 100) - :mu) * (((authority.status == 1) * 100) - :mu)) / count(authority.id) AS variance
+			
+			FROM _opportunities AS authority
+			  JOIN _opportunities AS lower ON authority.confidence = 100
+					AND lower.confidence < 100
+					AND authority.person = lower.person
+					AND authority.event = lower.event
+					AND lower.confidence > 0
+			WHERE authority.person = :person
+					AND lower.source = :source
+					AND lower.status = :claim
+			GROUP BY lower.source;
+		");
+		$s->execute([
+			':source' => $src,
+			':claim' => $claim,
+			':mu' => $mu
+		]);
+
+		return $s->fetchColumn(0) / (100 * 100);
+	}
+
+	public static function getAttLikelihoodBySourceAndClaim($src, $claim) {
+		global $pdo;
+		$s = $pdo->prepare("
+			SELECT
+			  sum(authority.status == 1) * 100 / count(authority.id) AS pctAttend
+			
+			FROM _opportunities AS authority
+			  JOIN _opportunities AS lower ON authority.confidence = 100
+					AND lower.confidence < 100
+					AND authority.person = lower.person
+					AND authority.event = lower.event
+					AND lower.confidence > 0
+			WHERE lower.source = :source
+				AND lower.status = :claim
+			GROUP BY lower.source;
+		");
+		$s->execute([':source' => $src,
+					 ':claim' => $claim]);
+
+		return $s->fetchColumn(0);
+	}
+
+	public static function getAttVarianceBySourceAndClaim($src, $claim) {
+		global $pdo;
+		$mu = self::getAttLikelihoodBySourceAndClaim($src, $claim) * 100;
+		$s = $pdo->prepare("
+			SELECT
+			  sum((((authority.status == 1) * 100) - :mu) * (((authority.status == 1) * 100) - :mu)) / count(authority.id) AS variance
+			
+			FROM _opportunities AS authority
+			  JOIN _opportunities AS lower ON authority.confidence = 100
+					AND lower.confidence < 100
+					AND authority.person = lower.person
+					AND authority.event = lower.event
+					AND lower.confidence > 0
+			WHERE lower.source = :source
+				AND lower.status = :claim
+			GROUP BY lower.source;
+		");
+		$s->execute([
+			':source' => $src,
+			':claim' => $claim,
+			':mu' => $mu
+		]);
+
+		return $s->fetchColumn(0) / (100 * 100);
+	}
 }
 
 
@@ -362,8 +528,13 @@ class Person extends Base {
 				throw new Exception('unexpected number of names : ' . $string);
 
 			$s = $pdo->prepare("SELECT id FROM _people WHERE upper(lName) = upper(:lName) AND (upper(fName) = upper(:fName) OR upper(pName) = upper(:fName))");
+			$c = $pdo->prepare("SELECT COUNT(*) FROM _people WHERE upper(lName) = upper(:lName) AND (upper(fName) = upper(:fName) OR upper(pName) = upper(:fName))");
 			try {
 				$s->execute([
+					':fName' => $st[0],
+					':lName' => $st[1]
+				]);
+				$c->execute([
 					':fName' => $st[0],
 					':lName' => $st[1]
 				]);
@@ -371,11 +542,42 @@ class Person extends Base {
 				return 0;
 			}
 
-			if ($s->rowCount() > 1) {
-				throw new Exception("Ambiguous Records : matches multiple people");
-			}
-			return $s->fetchColumn(0);
 
+			$resultCount = $c->fetchColumn(0);
+			if ($resultCount > 1) { // many results.
+				throw new Exception("Ambiguous Records : " . $string . " matches multiple people");
+			}
+			if ($resultCount == 1) { // one result
+				return $s->fetchColumn(0);
+			}
+
+
+			// no results.  Let's try with nicknames. 
+			
+			$s = $pdo->prepare("SELECT id FROM _people as p JOIN '-nicknames' AS n ON p.fName = n.first WHERE upper(lName) = upper(:lName) AND upper(nick) = upper(:fName)");
+			$c = $pdo->prepare("SELECT COUNT(*) FROM _people as p JOIN '-nicknames' AS n ON p.fName = n.first WHERE upper(lName) = upper(:lName) AND upper(nick) = upper(:fName)");
+			try {
+				$s->execute([
+					':fName' => $st[0],
+					':lName' => $st[1]
+				]);
+				$c->execute([
+					':fName' => $st[0],
+					':lName' => $st[1]
+				]);
+			} catch (Exception $e) {
+				return 0;
+			}
+
+			$resultCount = $c->fetchColumn(0);
+			if ($resultCount > 1) { // many results.
+				throw new Exception("Ambiguous Records : " . $string . " matches multiple people");
+			}
+			if ($resultCount == 1) { // one result
+				return $s->fetchColumn(0);
+			}
+
+			return 0;
 		}
 	}
 
@@ -413,6 +615,57 @@ class Person extends Base {
 		}
 
 		return $opps;
+
+	}
+
+
+	public function getCalcdOpps() {
+		global $pdo;
+
+		$opps = [];
+
+		$s = $pdo->prepare("
+			SELECT e.id AS eid
+			FROM _opportunities AS o 
+			  JOIN _events AS e
+			  	ON o.event = e.id
+		 	WHERE person = :person AND 
+		 		status > 0 
+			GROUP BY e.id 
+			ORDER BY e.dt DESC
+			");
+		$s->execute([
+			':person' => $this->id
+		]);
+
+		while (($e = $s->fetchColumn(0)) !== false) {
+			$opps[] = new CalcOpp($this->id, $e);
+
+		}
+
+		return $opps;
+	}
+
+
+	public function getGroupMemberships() {
+		global $pdo;
+
+		$gms = [];
+
+		$s = $pdo->prepare("
+			SELECT gm.id 
+			FROM _grpmem AS gm  
+		 	WHERE gm.person = :person");
+		$s->execute([
+			':person' => $this->id
+		]);
+
+
+		while (($gm = $s->fetchColumn(0)) !== false) {
+			$gms[] = new GrpMem($gm);
+		}
+
+		return $gms;
 
 	}
 }

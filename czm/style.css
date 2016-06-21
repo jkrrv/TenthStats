@@ -49,10 +49,13 @@ body {
     position: absolute;
 }
 
-
 .cesium-viewer .cesium-widget-credits a {
     width:30px;
     height:30px;
     display: inline-block;
     overflow: hidden;
+}
+
+.cesium-infoBox-description {
+    font-size:13px;
 }
