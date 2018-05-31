@@ -127,6 +127,19 @@ abstract class Base {
 }
 
 
+/**
+ * Class Location
+ *
+ * @property $address
+ * @property $state
+ * @property $name
+ * @property $type
+ * @property $lat
+ * @property $long
+ * @property $accur
+ * @property-read $id
+ *
+ */
 class Location extends Base {
 	protected $address;
 	protected $state;
@@ -141,20 +154,41 @@ class Location extends Base {
 	public function stringSearch($string) {
 		global $pdo;
 
-		$s = $pdo->prepare("SELECT id FROM _locations WHERE address = :str OR name = :str");
+		$s = $pdo->prepare("SELECT id FROM _locations WHERE address LIKE :str OR name = :str");
 		try {
-			$s->execute([':str' => $string]);
+			$s->execute([':str' => $string."%"]);
 			return $s->fetchColumn(0);
 		} catch (Exception $e) {
 			return 0;
 		}
 	}
+
+	public function __toString() {
+		if ($this->name != '')
+			return $this->name;
+		return $this->address . ", " . $this->state;
+	}
 }
 
+/**
+ * Class Grp
+ *
+ * @property $name
+ * @property $type
+ * @property $gender
+ * @property $typLoc
+ * @property $typDay
+ * @property $typFreq
+ * @property-read $id
+ *
+ */
 class Grp extends Base {
 	protected $id;
 	protected $name;
 	protected $type;
+	protected $typLoc;
+	protected $typDay; // 0 = Sunday
+	protected $typFreq = 0; // 0 sporadic.  1 weekly.  2 monthly.  3 quarterly.
 	protected $gender = 0;
 
 	protected $_tableName = "_grps";
@@ -172,9 +206,24 @@ class Grp extends Base {
 			return 0;
 		}
 	}
+
+	public function __toString()
+	{
+		return $this->name . "";
+	}
 }
 
-
+/**
+ * Class GrpMem
+ *
+ * 	@property-read $id;
+ * 	@property $person;
+ * 	@property $grp;
+ * 	@property $level;
+ * 	@property $dJoin;
+ * 	@property $dLeft;
+ *
+ */
 class GrpMem extends Base {
 	protected $id;
 	protected $person;
@@ -213,6 +262,16 @@ class GrpMem extends Base {
 }
 
 
+/**
+ * Class Event
+ *
+ * @property $grp
+ * @property $dt
+ * @property $location
+ * @property $facebookId;
+ * @property $name
+ * @property-read $id
+ */
 class Event extends Base {
 	protected $id;
 	protected $grp;
@@ -320,7 +379,16 @@ class CalcOpp extends Opp {
 	}
 }
 
-
+/**
+ * Class Opp
+ *
+ * 	@property-read $id;
+ * 	@property $person;
+ * 	@property $event;
+ * 	@property $status;
+ * 	@property $confidence;
+ * 	@property $source;
+ */
 class Opp extends Base {
 	protected $id;
 	protected $person;
@@ -379,7 +447,7 @@ class Opp extends Base {
 	public function getEvent() {
 		return new Event($this->event);
 	}
-	
+
 	public static function getAttLikelihoodByPersonAndSourceAndClaim($person, $src, $claim) {
 		global $pdo;
 		$s = $pdo->prepare("
@@ -480,7 +548,28 @@ class Opp extends Base {
 	}
 }
 
-
+/**
+ * Class Person
+ *
+ * 	@property-read $id;
+ * 	@property $familyNum;
+ * 	@property $indivNum;
+ * 	@property $familyRole;
+ * 	@property $fName;
+ * 	@property $mName;
+ * 	@property $lName;
+ * 	@property $pName;
+ * 	@property $tName;
+ * 	@property $address;
+ * 	@property $gender;
+ * 	@property $marital;
+ * 	@property $memStatus;
+ * 	@property $dBirth;
+ * 	@property $dJoined;
+ * 	@property $parish;
+ * 	@property $facebookId;
+ *
+ */
 class Person extends Base {
 	protected $id;
 	protected $familyNum;
@@ -499,10 +588,16 @@ class Person extends Base {
 	protected $dJoined;
 	protected $parish;
 	protected $facebookId;
-	
+
+	protected $_age = null;
 
 	protected $_tableName = "_people";
 
+	/**
+	 * @param $string
+	 * @return int|string
+	 * @throws Exception
+	 */
 	public function stringSearch($string) {
 		global $pdo;
 		
@@ -554,8 +649,8 @@ class Person extends Base {
 
 			// no results.  Let's try with nicknames. 
 			
-			$s = $pdo->prepare("SELECT id FROM _people as p JOIN '-nicknames' AS n ON p.fName = n.first WHERE upper(lName) = upper(:lName) AND upper(nick) = upper(:fName)");
-			$c = $pdo->prepare("SELECT COUNT(*) FROM _people as p JOIN '-nicknames' AS n ON p.fName = n.first WHERE upper(lName) = upper(:lName) AND upper(nick) = upper(:fName)");
+			$s = $pdo->prepare("SELECT p.id FROM _people as p JOIN '_nicknames' AS n ON p.fName = n.first WHERE upper(lName) = upper(:lName) AND upper(nick) = upper(:fName)");
+			$c = $pdo->prepare("SELECT COUNT(*) FROM _people as p JOIN '_nicknames' AS n ON p.fName = n.first WHERE upper(lName) = upper(:lName) AND upper(nick) = upper(:fName)");
 			try {
 				$s->execute([
 					':fName' => $st[0],
@@ -581,17 +676,56 @@ class Person extends Base {
 		}
 	}
 
+	/**
+	 * @return mixed
+	 */
 	public function getPrefName() {
 		if ($this->pName != null)
 			return $this->pName;
 		return $this->fName;
 	}
 
+	/**
+	 * @return string
+	 */
 	public function __toString() {
 		return $this->getPrefName() . " " . $this->lName;
 	}
 
 
+	public function age() {
+		if ($this->_age !== null)
+			return $this->_age;
+
+		if ($this->dBirth === null)
+			return null;
+
+		$this->_age = (time() - $this->dBirth) / (365.25 * 24 * 60 * 60);
+
+		$this->_age = round($this->_age, 1);
+
+		return $this->_age;
+	}
+
+	public function ageIsh() {
+		$a = $this->age();
+		if ($a === null)
+			return "Unknown";
+
+
+		if ($a < 6)
+			return (string)round($a, 1);
+
+		if ($a < 35)
+			return (string)floor($a);
+
+		return (string)floor($a/10)*10 . "s";
+	}
+
+
+	/**
+	 * @return array
+	 */
 	public function getOppsTaken() {
 		global $pdo;
 
@@ -619,6 +753,9 @@ class Person extends Base {
 	}
 
 
+	/**
+	 * @return array
+	 */
 	public function getCalcdOpps() {
 		global $pdo;
 
@@ -647,6 +784,70 @@ class Person extends Base {
 	}
 
 
+	private static $_emailQuery;
+	private static function getEmailQueryStmt() {
+		if (self::$_emailQuery === null) {
+
+			global $pdo;
+			self::$_emailQuery = $pdo->prepare( "SELECT EmailAddr AS e FROM Emails WHERE FamilyNumber = :fn AND IndividualNumber = :in AND EmailUnlisted = 'False' AND Description = 'Preferred E-mai'" );
+		}
+		return self::$_emailQuery;
+	}
+
+
+	private static $_phoneQuery;
+	private static function getPhoneQueryStmt() {
+		if (self::$_phoneQuery === null) {
+
+			global $pdo;
+			self::$_phoneQuery = $pdo->prepare( "SELECT Phone AS p, Extension AS x, Description AS d FROM Phones WHERE FamilyNumber = :fn AND IndividualNumber = :in AND Unlisted = 'False'" );
+		}
+		return self::$_phoneQuery;
+	}
+
+
+	public function getPhone() {
+		$s = self::getPhoneQueryStmt();
+
+		$s->execute([':fn' => (string)$this->familyNum, ':in' => (string)$this->indivNum]);
+
+		$r = [];
+
+		while ($d = $s->fetch(PDO::FETCH_ASSOC)) {
+			if ($d['p'] == null)
+				continue;
+
+			if ($d['x'] == null)
+				$r[] = $d['p'] . " (" . $d['d'] . ")";
+			else
+				$r[] = $d['p'] . 'x' . $d['x'] . " (" . $d['d'] . ")";
+		}
+
+		return array_unique($r);
+	}
+
+
+	public function getEmails() {
+		$s = self::getEmailQueryStmt();
+
+		$s->execute([':fn' => (string)$this->familyNum, ':in' => (string)$this->indivNum]);
+
+		$r = [];
+
+		while ($d = $s->fetch(PDO::FETCH_ASSOC)) {
+			if ($d['e'] == null)
+				continue;
+
+			$r[] = $d['e'];
+		}
+
+		return array_unique($r);
+	}
+
+
+	/**
+	 * @return array
+	 */
 	public function getGroupMemberships() {
 		global $pdo;
 

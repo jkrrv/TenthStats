@@ -143,7 +143,7 @@ while (($data) !== FALSE) { // for each address (-ish)
 	foreach ($people as $p) {
 
 		// skip minors
-		if ($p->age() < 18)
+		if ($p->age() < 18 && $p->age() !== null)
 			continue;
 
 		foreach($closestSGs as $rank => $pair) {
@@ -152,7 +152,7 @@ while (($data) !== FALSE) { // for each address (-ish)
 			if (stripos($g->title, "Maranatha") !== false)
 				continue;
 
-			if (stripos($g->title, "ESL ") !== false)
+			if ($g->parish === "io")
 				continue;
 
 			if (!isset($sgLists[$g->link]))
@@ -191,7 +191,7 @@ while (($data) !== FALSE) { // for each address (-ish)
 	foreach ( $people as $p ) {
 		/** @var $p Person */
 
-		echo "<h4>$p ({$p->memStatus}, " . $p->age() . ")</h4>";
+		echo "<h4>$p ({$p->memStatus}, " . $p->ageIsh() . ")</h4>";
 
 		echo implode(', ', $p->getPhone()) . "<br />";
 		echo implode(', ', $p->getEmails()) . "<br />";
@@ -259,7 +259,7 @@ foreach ($sgjson->groups as $group) {
 		echo "<td>" . $s->p . "</td>";
 //		echo "<td>"; var_dump($s->p); echo "</td>";
 		echo "<td>" . round($s->d, 2) . " mi</td>";
-		echo "<td>" . $s->p->age() . " yrs</td>";
+		echo "<td>" . $s->p->ageIsh() . "</td>";
 		echo "<td>" . implode('<br />', $s->p->getEmails()) . "</td>";
 		echo "<td>" . implode('<br />', $s->p->getPhone()) . "</td>";
 		echo "</tr>";
